@@ -27,31 +27,23 @@ class LineBotService
     command = ''
     events = client.parse_events_from(body)
     events.each { |event|
-
-      user_id = event['source']['userId']
-      if !User.exists?(line_user_id: user_id)
-        user = User.create(line_user_id: user_id)
-        user.save
-      end
-      user = User.find_by(line_user_id: user_id)
-
       case event
       when Line::Bot::Event::Message
         case event.type
         when Line::Bot::Event::MessageType::Text
           msg = event.message['text'].to_s.downcase
           if COMMANDS.any? {|c| msg.include?(c); command = c if msg.include?(c); }
-            return_msg = self.handle_with_commands(msg, command, user)
+            return_msg = self.handle_with_commands(msg, command)
           end
           client.reply_message(event['replyToken'], self.text_format(return_msg)) if return_msg.present?
         when Line::Bot::Event::MessageType::Location
           lat = event.message['latitude'].to_s
           lng = event.message['longitude'].to_s
-          fb_results = graph.search_places(lat, lng, user)
+          fb_results = graph.search_places(lat, lng)
           google_results = ''
-          if user.get_google_result
+          if current_user.get_google_result
             keywords = fb_results.map {|f| f['name']}
-            google_results = google.search_places(lat, lng, user, keywords)
+            google_results = google.search_places(lat, lng, keywords)
           end
           return_response = (fb_results.size>0) ? self.carousel_format(fb_results, google_results) : self.text_format(I18n.t('empty.no_restaurants'))
           client.reply_message(event['replyToken'], return_response)
@@ -157,18 +149,22 @@ class LineBotService
     return '400 Bad Request' unless client.validate_signature(body, signature)
   end
 
-  def handle_with_commands msg, command, user
+  def method_name
+    
+  end
+
+  def handle_with_commands msg, command
     case command
     when I18n.t('common.user')
-      "#{I18n.t('common.user')}#{I18n.t('common.setting')}：\n#{I18n.t('common.radius')}：#{user.try(:max_distance)}m\n#{I18n.t('common.point')}：#{user.try(:min_score)}#{I18n.t('common.score')}\n#{I18n.t('common.random')}：#{user.random_type ? I18n.t('common.open') : I18n.t('common.close')}"
+      "#{I18n.t('common.user')}#{I18n.t('common.setting')}：\n#{I18n.t('common.radius')}：#{current_user.try(:max_distance)}m\n#{I18n.t('common.point')}：#{current_user.try(:min_score)}#{I18n.t('common.score')}\n#{I18n.t('common.random')}：#{current_user.random_type ? I18n.t('common.open') : I18n.t('common.close')}"
     when I18n.t('common.command')
       "#{I18n.t('common.command')}#{I18n.t('common.setting')}：\n#{I18n.t('common.random')}：#{I18n.t('common.random')}true/false\n#{I18n.t('common.radius')}500(500~50000)\n#{I18n.t('common.point')}3.8 (3~5 接受小數第一位)"
     when I18n.t('common.random')
       random = msg.gsub(command, '').to_s
       set_random = (random == I18n.t('common.open')) ? true : false
-      user.random_type = set_random
+      current_user.random_type = set_random
       if random == I18n.t('common.open') || random == I18n.t('common.close')
-        if user.save
+        if current_user.save
           "#{I18n.t('command.success')}，#{I18n.t('common.random')}：#{random}"
         else
           I18n.t('command.error')
@@ -178,16 +174,16 @@ class LineBotService
       end
     when I18n.t('common.radius')
       radius = msg.gsub(command, '').to_i
-      user.max_distance = radius
-      if user.save
+      current_user.max_distance = radius
+      if current_user.save
         "#{I18n.t('command.success')}，#{I18n.t('common.radius')}：#{radius}m"
       else
         I18n.t('command.error')
       end
     when I18n.t('common.point')
       score = msg.gsub(command, '').to_f
-      user.min_score = score
-      if user.save
+      current_user.min_score = score
+      if current_user.save
         "#{I18n.t('command.success')}，#{I18n.t('common.point')}：#{score}"
       else
         I18n.t('command.error')
