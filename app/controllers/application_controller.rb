@@ -9,6 +9,6 @@ class ApplicationController < ActionController::Base
 	  def current_user
 	    user_id = params.dig('events').first.dig('source','userId')
       User.create!(line_user_id: user_id) if !User.exists?(line_user_id: user_id)
-      @current_user ||= User.find(user_id)
+      @current_user ||= User.find_by(line_user_id: user_id)
 	  end
 end
